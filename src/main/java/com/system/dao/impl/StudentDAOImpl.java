@@ -11,6 +11,35 @@ import java.util.List;
 
 public class StudentDAOImpl implements BaseDAO<Student> {
 
+    // 新增：根据学号查询学生（适配登录逻辑）
+    public Student findByStudentNumber(String studentNumber) throws SQLException {
+        String sql = "SELECT * FROM students WHERE student_number = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, studentNumber);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapRowToStudent(rs); // 复用已有的结果集转换方法
+                }
+            }
+        }
+        return null;
+    }
+
+    // 新增：校验学号是否已存在（注册用）
+    public boolean isStudentNumberExists(String studentNumber) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM students WHERE student_number = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, studentNumber);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        }
+        return false;
+    }
+
     @Override
     public int insert(Student student) throws SQLException {
         String sql = "INSERT INTO students (name, gender, major_id, enrollment_year, student_number) VALUES (?, ?, ?, ?, ?)";
