@@ -5,12 +5,18 @@ import com.system.dao.impl.CourseOfferingDAOImpl;
 import com.system.model.Course;
 import com.system.model.CourseOffering;
 import com.system.service.EnrollmentService;
+import com.system.dao.impl.TeacherDAOImpl;
+import com.system.model.Teacher;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
+
+import java.time.LocalDate;
+import java.time.Month;
+import java.time.Year;
 
 import java.sql.SQLException;
 import java.util.ArrayList; // 新增：导入ArrayList类，解决红波浪线
@@ -28,6 +34,42 @@ public class StudentCourseWindow {
     public StudentCourseWindow(int studentId) {
         this.studentId = studentId;
         initialize();
+    }
+
+    private int calculateCurrentSemester(int enrollmentYear) {
+        LocalDate now = LocalDate.now();  // 当前日期
+        int currentYear = now.getYear();
+        Month currentMonth = now.getMonth();
+
+        // 判断当前属于哪个学年
+        int academicYear;
+        boolean isFirstSemester;  // true: 上学期（奇数），false: 下学期（偶数）
+
+        if (currentMonth.getValue() >= 9) {
+            // 9~12月 → 本学年上学期
+            academicYear = currentYear;
+            isFirstSemester = true;
+        } else if (currentMonth.getValue() <= 2) {
+            // 1~2月 → 上学年上学期（但属于当前学年）
+            academicYear = currentYear;
+            isFirstSemester = true;
+        } else {
+            // 3~8月 → 本学年下学期
+            academicYear = currentYear;
+            isFirstSemester = false;
+        }
+
+        // 计算已过学年数
+        int yearsPassed = academicYear - enrollmentYear;
+
+        // 当前学期 = 已过完整学年×2 + 本学年是否上学期
+        int semester = yearsPassed * 2 + (isFirstSemester ? 1 : 2);
+
+        // 限制在1-8学期
+        if (semester < 1) semester = 1;
+        if (semester > 8) semester = 8;
+
+        return semester;
     }
 
     public void open() {
@@ -106,37 +148,76 @@ public class StudentCourseWindow {
         }
     }
 
-    // 核心修改1：加载可选课程→查询CourseOffering（而非Course）
+    // 1. 修改 loadOptionalCourses() 中的学期获取（简化：先固定测试，或后续从学生年级推算）
     private void loadOptionalCourses() {
+        clearTableCompletely();  // 替换原 courseTable.removeAll();
         try {
-            // 1. 假设学生当前学期为1（实际可从学生信息推算，此处简化）
-            int currentSemester = 1;
-            // 2. 从CourseOfferingDAO查询：学生专业+当前学期的可选开课实例
-            List<CourseOffering> optionalOfferings = courseOfferingDAO.findByMajorAndSemester(
-                    getStudentMajorId(), currentSemester
-            );
-            // 3. 填充表格（数据源改为List<CourseOffering>）
+            // 1. 获取学生真实专业ID
+            com.system.dao.impl.StudentDAOImpl studentDAO = new com.system.dao.impl.StudentDAOImpl();
+            com.system.model.Student student = studentDAO.findById(studentId);
+            if (student == null) {
+                showMsg("错误", "无法获取学生信息", SWT.ICON_ERROR);
+                return;
+            }
+            int majorId = student.getMajorId();
+            int enrollmentYear = student.getEnrollmentYear().getValue();
+
+            // 2. 计算当前学期
+            int currentSemester = calculateCurrentSemester(enrollmentYear);
+
+            // 3. 查询该专业 + 当前学期的开课
+            com.system.dao.impl.CourseOfferingDAOImpl offeringDAO = new com.system.dao.impl.CourseOfferingDAOImpl();
+            List<CourseOffering> optionalOfferings = offeringDAO.findByMajorAndSemester(majorId, currentSemester);
+
+            // 4. 填充表格（使用你已修复的版本）
             fillCourseTable(optionalOfferings);
-            showMsg("提示", "共加载 " + optionalOfferings.size() + " 门可选课程", SWT.ICON_INFORMATION);
+
+            showMsg("提示",
+                    String.format("当前第 %d 学期，共加载 %d 门可选课程", currentSemester, optionalOfferings.size()),
+                    SWT.ICON_INFORMATION);
+
         } catch (SQLException e) {
             showMsg("错误", "加载可选课程失败：" + e.getMessage(), SWT.ICON_ERROR);
             e.printStackTrace();
         }
     }
 
+    // 2. 新方法：真实从数据库获取学生专业ID
+    private int getRealStudentMajorId() {
+        try {
+            // 需注入或new StudentDAOImpl
+            com.system.dao.impl.StudentDAOImpl studentDAO = new com.system.dao.impl.StudentDAOImpl();
+            com.system.model.Student student = studentDAO.findById(studentId);
+            if (student != null) {
+                return student.getMajorId();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 1; // 兜底
+    }
+
+    // 新增辅助方法（放在类中任意位置）
+    private void clearTableCompletely() {
+        // 先 dispose 所有 item（彻底释放）
+        for (TableItem item : courseTable.getItems()) {
+            item.dispose();
+        }
+        courseTable.removeAll();  // 再清空
+    }
+
     // 核心修改2：加载已选课程→查询学生关联的CourseOffering
     private void loadSelectedCourses() {
+        clearTableCompletely();  // 替换原 courseTable.removeAll();
         try {
-            // 从EnrollmentService查询学生已选的开课实例详情
-            List<EnrollmentService.EnrolledCourseView> enrolledViews = enrollmentService.getEnrolledCourses(studentId);
-            // 转换为CourseOffering列表（适配表格填充方法）
-            List<CourseOffering> selectedOfferings = convertToCourseOfferings(enrolledViews);
-            // 填充表格
-            fillCourseTable(selectedOfferings);
-            showMsg("提示", "共加载 " + selectedOfferings.size() + " 门已选课程", SWT.ICON_INFORMATION);
-        } catch (Exception e) {
-            showMsg("错误", "加载已选课程失败：" + e.getMessage(), SWT.ICON_ERROR);
+            // 获取该学生已选的所有开课实例（需EnrollmentService提供方法返回List<CourseOffering>）
+            List<CourseOffering> selectedOfferings = enrollmentService.getSelectedCourseOfferings(studentId);
+
+            fillCourseTable(selectedOfferings);  // 复用已正确实现的方法
+
+        } catch (SQLException e) {
             e.printStackTrace();
+            showMsg("错误", "加载已选课程失败！", SWT.ICON_ERROR);
         }
     }
 
@@ -148,28 +229,6 @@ public class StudentCourseWindow {
         return 1;
     }
 
-    // 辅助方法2：将EnrolledCourseView转换为CourseOffering（适配表格）
-    private List<CourseOffering> convertToCourseOfferings(List<EnrollmentService.EnrolledCourseView> views) {
-        List<CourseOffering> offerings = new ArrayList<>(); // 红波浪线已解决（已导入ArrayList）
-        for (EnrollmentService.EnrolledCourseView view : views) {
-            CourseOffering offering = new CourseOffering();
-            offering.setClassId(view.classId);
-            offering.setCurrentEnrolled(view.currentEnrolled);
-            offering.setMaxCapacity(view.maxCapacity);
-            offering.setTeacherName(view.teacherName);
-            // 关联课程信息（通过courseId查Course）
-            try {
-                Course course = courseDAO.findById(getCourseIdByCourseName(view.courseName));
-                if (course != null) {
-                    offering.setCourseId(course.getCourseId());
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-            offerings.add(offering);
-        }
-        return offerings;
-    }
 
     // 辅助方法3：通过课程名称查课程ID（简化逻辑，实际应通过view的courseId直接关联）
     private int getCourseIdByCourseName(String courseName) throws SQLException {
@@ -239,30 +298,38 @@ public class StudentCourseWindow {
 
     // 核心修改3：表格填充→数据源改为List<CourseOffering>（彻底解决红波浪线）
     private void fillCourseTable(List<CourseOffering> offerings) {
-        courseTable.removeAll(); // 清空表格行（SWT标准方法，无错误）
-        
-        // 无数据时提示
+        clearTableCompletely();  // 替换原 courseTable.removeAll();
+
         if (offerings == null || offerings.isEmpty()) {
-            TableItem emptyItem = new TableItem(courseTable, SWT.NONE);
-            emptyItem.setText(0, "暂无课程数据");
+            showMsg("提示", "暂无已选课程", SWT.ICON_INFORMATION);
             return;
         }
 
-        // 遍历开课实例，填充表格（调用CourseOffering的真实方法，无拼写问题）
+        TeacherDAOImpl teacherDAO = new TeacherDAOImpl();
+        CourseDAOImpl courseDAO = new CourseDAOImpl();
+
         for (CourseOffering offering : offerings) {
             TableItem item = new TableItem(courseTable, SWT.NONE);
-            // 从CourseOffering获取开课信息，从关联的Course获取课程基础信息
-            Course course = getCourseByOffering(offering);
+
+            Course course = null;
+            String teacherName = "暂无";
+            try {
+                course = courseDAO.findById(offering.getCourseId());
+                Teacher teacher = teacherDAO.findById(offering.getTeacherId());
+                if (teacher != null) teacherName = teacher.getName();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+
             item.setText(new String[]{
-                    String.valueOf(offering.getClassId()), // CourseOffering有getClassId()
-                    course != null ? course.getCourseName() : "未知课程", // Course有getCourseName()
-                    course != null ? String.valueOf(course.getCredits()) : "0", // Course有getCredits()
-                    offering.getTeacherName() != null ? offering.getTeacherName() : "暂无", // CourseOffering有getTeacherName()
-                    offering.getCurrentEnrolled() + "/" + offering.getMaxCapacity() // CourseOffering有对应方法
+                    String.valueOf(offering.getClassId()),
+                    course != null ? course.getCourseName() : "未知课程",
+                    course != null ? String.valueOf(course.getCredits()) : "0",
+                    teacherName,
+                    offering.getCurrentEnrolled() + "/" + offering.getMaxCapacity()
             });
         }
 
-        // 自动调整列宽
         for (TableColumn column : courseTable.getColumns()) {
             column.pack();
         }

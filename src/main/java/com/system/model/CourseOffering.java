@@ -19,7 +19,6 @@ public class CourseOffering {
     private int maxCapacity;       // 最大选课人数（≥0）
     private int currentEnrolled = 0; // 当前选课人数（默认0，仅DAO/Service可修改）
     // 新增：teacherName字段（用于界面直接展示教师姓名，无需每次查Teacher表）
-    private String teacherName;    // 关联 Teacher.name（DAO层连表查询赋值）
 
     // 无参构造（DAO层反射必需）
     public CourseOffering() {
@@ -29,7 +28,6 @@ public class CourseOffering {
     public CourseOffering(int courseId, int teacherId, String teacherName, int semester, int majorId, int maxCapacity) {
         this.courseId = courseId;
         this.teacherId = teacherId;
-        this.teacherName = teacherName; // 新增参数
         this.semester = semester;
         this.majorId = majorId;
         this.maxCapacity = maxCapacity;
@@ -46,11 +44,6 @@ public class CourseOffering {
 
     public int getTeacherId() {
         return teacherId;
-    }
-
-    // 新增：teacherName的getter（适配fillCourseTable调用）
-    public String getTeacherName() {
-        return teacherName;
     }
 
     public int getSemester() {
@@ -80,11 +73,6 @@ public class CourseOffering {
 
     public void setTeacherId(int teacherId) {
         this.teacherId = teacherId;
-    }
-
-    // 新增：teacherName的setter
-    public void setTeacherName(String teacherName) {
-        this.teacherName = teacherName;
     }
 
     public void setSemester(int semester) {
@@ -119,7 +107,6 @@ public class CourseOffering {
                 "classId=" + classId +
                 ", courseId=" + courseId +
                 ", teacherId=" + teacherId +
-                ", teacherName='" + teacherName + '\'' + // 新增字段打印
                 ", semester=" + semester +
                 ", majorId=" + majorId +
                 ", maxCapacity=" + maxCapacity +

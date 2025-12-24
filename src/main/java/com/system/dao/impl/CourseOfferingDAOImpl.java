@@ -63,11 +63,7 @@ public class CourseOfferingDAOImpl implements BaseDAO<CourseOffering> {
 
     @Override
     public CourseOffering findById(int id) throws SQLException {
-        // 修正1：关联teachers表，获取教师姓名（解决CourseOffering.teacherName赋值）
-        String sql = "SELECT co.*, t.name AS teacher_name " +
-                "FROM course_offerings co " +
-                "JOIN teachers t ON co.teacher_id = t.teacher_id " +
-                "WHERE co.class_id=?";
+        String sql = "SELECT * FROM course_offerings WHERE class_id=?";
         try (Connection conn = DBUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, id);
@@ -80,11 +76,8 @@ public class CourseOfferingDAOImpl implements BaseDAO<CourseOffering> {
 
     @Override
     public List<CourseOffering> findAll() throws SQLException {
-        // 修正2：关联teachers表，查询所有开课实例及对应教师姓名
         List<CourseOffering> list = new ArrayList<>();
-        String sql = "SELECT co.*, t.name AS teacher_name " +
-                "FROM course_offerings co " +
-                "JOIN teachers t ON co.teacher_id = t.teacher_id";
+        String sql = "SELECT * FROM course_offerings";
         try (Connection conn = DBUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
@@ -94,7 +87,7 @@ public class CourseOfferingDAOImpl implements BaseDAO<CourseOffering> {
     }
 
     // 核心修正3：补充teacherName字段映射（适配关联查询结果）
-    private CourseOffering mapRowToOffering(ResultSet rs) throws SQLException {
+    public CourseOffering mapRowToOffering(ResultSet rs) throws SQLException {
         CourseOffering co = new CourseOffering();
         // 原有course_offerings表字段映射（不变）
         co.setClassId(rs.getInt("class_id"));
@@ -104,18 +97,13 @@ public class CourseOfferingDAOImpl implements BaseDAO<CourseOffering> {
         co.setMajorId(rs.getInt("major_id"));
         co.setMaxCapacity(rs.getInt("max_capacity"));
         co.setCurrentEnrolled(rs.getInt("current_enrolled"));
-        // 新增：映射teachers表的name字段到CourseOffering.teacherName
-        co.setTeacherName(rs.getString("teacher_name"));
         return co;
     }
 
     // 修正4：根据课程ID查询→关联teachers表
     public List<CourseOffering> findByCourseId(int courseId) throws SQLException {
         List<CourseOffering> list = new ArrayList<>();
-        String sql = "SELECT co.*, t.name AS teacher_name " +
-                "FROM course_offerings co " +
-                "JOIN teachers t ON co.teacher_id = t.teacher_id " +
-                "WHERE co.course_id=?";
+        String sql = "SELECT * FROM course_offerings WHERE course_id=?";
         try (Connection conn = DBUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, courseId);
@@ -129,16 +117,28 @@ public class CourseOfferingDAOImpl implements BaseDAO<CourseOffering> {
     // 修正5：根据专业ID+学期查询→关联teachers表（学生端筛选核心方法）
     public List<CourseOffering> findByMajorAndSemester(int majorId, int semester) throws SQLException {
         List<CourseOffering> list = new ArrayList<>();
-        String sql = "SELECT co.*, t.name AS teacher_name " +
-                "FROM course_offerings co " +
-                "JOIN teachers t ON co.teacher_id = t.teacher_id " +
-                "WHERE co.major_id=? AND co.semester=?";
+        String sql = "SELECT * FROM course_offerings WHERE major_id=? AND semester=?";
         try (Connection conn = DBUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, majorId);
             pstmt.setInt(2, semester);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) list.add(mapRowToOffering(rs));
+            }
+        }
+        return list;
+    }
+
+    public List<CourseOffering> findByMajor(int majorId) throws SQLException {
+        List<CourseOffering> list = new ArrayList<>();
+        String sql = "SELECT * FROM course_offerings WHERE major_id = ?";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, majorId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapRowToOffering(rs));
+                }
             }
         }
         return list;

@@ -20,6 +20,26 @@ public class EnrollmentService {
      * 选课事务（已提供）
      * @return 0成功 1已选 2人数已满 3异常
      */
+    public List<CourseOffering> getSelectedCourseOfferings(int studentId) throws SQLException {
+        CourseOfferingDAOImpl dao = new CourseOfferingDAOImpl();
+        String sql = "SELECT co.*, t.name AS teacher_name " +
+                "FROM enrollments e " +
+                "JOIN course_offerings co ON e.class_id = co.class_id " +
+                "JOIN teachers t ON co.teacher_id = t.teacher_id " +
+                "WHERE e.student_id = ?";
+        List<CourseOffering> list = new ArrayList<>();
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, studentId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(dao.mapRowToOffering(rs));  // 复用DAO的映射方法
+                }
+            }
+        }
+        return list;
+    }
+
     public int enroll(int studentId, int classId) {
         Connection conn = null;
         try {
@@ -152,9 +172,9 @@ public class EnrollmentService {
                 co.max_capacity,
                 e.enroll_date
             FROM enrollments e
-            JOIN course_offerings co ON e.class_id = co.class_id
-            JOIN courses c ON co.course_id = c.course_id
-            JOIN teachers t ON co.teacher_id = t.teacher_id
+            INNER JOIN course_offerings co ON e.class_id = co.class_id
+            INNER JOIN courses c ON co.course_id = c.course_id
+            INNER JOIN teachers t ON co.teacher_id = t.teacher_id
             WHERE e.student_id = ?
             ORDER BY co.semester DESC, c.course_name
             """;

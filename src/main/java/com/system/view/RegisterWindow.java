@@ -1,21 +1,20 @@
 package com.system.view;
 
+import com.system.dao.impl.MajorDAOImpl;
 import com.system.dao.impl.StudentDAOImpl;
+import com.system.model.Major;
 import com.system.model.Student;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.widgets.Button;
-import org.eclipse.swt.widgets.Combo;
-import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.MessageBox;
-import org.eclipse.swt.widgets.Shell;
-import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.*;
 
 import java.time.Year;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class RegisterWindow {
     private Shell shell;
@@ -26,6 +25,10 @@ public class RegisterWindow {
     private Text enrollmentYearText;
     private Label tipLabel;
     private StudentDAOImpl studentDAO = new StudentDAOImpl();
+    private MajorDAOImpl majorDAO = new MajorDAOImpl();
+
+    // 用于保存专业名称 → major_id 的映射
+    private Map<String, Integer> majorNameToId = new HashMap<>();
 
     public void open() {
         Display display = Display.getDefault();
@@ -69,14 +72,14 @@ public class RegisterWindow {
         genderCombo.setItems("男", "女");
         genderCombo.select(0);
 
-        // 专业标签+下拉框
+        // 专业标签+下拉框（关键修改：动态加载）
         Label majorLabel = new Label(shell, SWT.NONE);
         majorLabel.setLayoutData(new GridData(SWT.RIGHT, SWT.CENTER, false, false));
         majorLabel.setText("专业*");
         majorCombo = new Combo(shell, SWT.READ_ONLY);
         majorCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        majorCombo.setItems("计算机科学与技术");
-        majorCombo.select(0);
+
+        loadMajors();  // 加载专业列表
 
         // 入学年份标签+输入框
         Label yearLabel = new Label(shell, SWT.NONE);
@@ -105,15 +108,39 @@ public class RegisterWindow {
         });
     }
 
+    /** 从数据库加载专业列表到 Combo，并建立名称→ID映射 */
+    private void loadMajors() {
+        try {
+            List<Major> majors = majorDAO.findAll();
+            if (majors.isEmpty()) {
+                majorCombo.add("无专业可选");
+                tipLabel.setText("数据库中暂无专业数据！");
+                return;
+            }
+
+            majorNameToId.clear();
+            for (Major m : majors) {
+                String name = m.getMajorName();
+                majorCombo.add(name);
+                majorNameToId.put(name, m.getMajorId());
+            }
+            majorCombo.select(0);  // 默认选中第一个
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            majorCombo.add("加载专业失败");
+            tipLabel.setText("加载专业列表失败：" + ex.getMessage());
+        }
+    }
+
     private void doRegister() {
         String sn = studentNumberText.getText().trim();
         String name = nameText.getText().trim();
         String gender = genderCombo.getText();
-        int majorId = 1;
+        String majorName = majorCombo.getText();
         String yearStr = enrollmentYearText.getText().trim();
 
         // 表单验证
-        if (sn.isEmpty() || name.isEmpty() || yearStr.isEmpty()) {
+        if (sn.isEmpty() || name.isEmpty() || majorName.isEmpty() || yearStr.isEmpty()) {
             tipLabel.setText("带*的字段不能为空！");
             return;
         }
@@ -126,8 +153,16 @@ public class RegisterWindow {
             return;
         }
 
+        // 获取选中的专业ID
+        Integer majorId = majorNameToId.get(majorName);
+        if (majorId == null) {
+            tipLabel.setText("请选择有效专业！");
+            return;
+        }
+
         // 校验学号是否已存在
         try {
+            // 假设你已添加 findByStudentNumber 方法，如未添加请补上
             if (studentDAO.isStudentNumberExists(sn)) {
                 tipLabel.setText("该学号已注册！");
                 return;
